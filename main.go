@@ -19,12 +19,14 @@ func main() {
 		log.Fatal(err)
 	}
 
+	cache := NewRedisCache()
+
 	if *seed {
 		fmt.Println("seeding the database")
 		// seed stuff
 		seedAccounts(store)
 	}
 
-	server := NewAPIServer(":3000", store)
+	server := NewAPIServer(":3000", store, cache)
 	server.Run()
 }

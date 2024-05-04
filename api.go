@@ -15,12 +15,14 @@ import (
 type APIServer struct {
 	listenAddr string
 	store Storage
+	cache Cache
 }
 
-func NewAPIServer(listenAddr string, store Storage) *APIServer {
+func NewAPIServer(listenAddr string, store Storage, cache Cache) *APIServer {
 	return &APIServer{
 		listenAddr: listenAddr,
 		store: store,
+		cache: cache,
 	}
 }
 
@@ -156,6 +158,11 @@ func WriteJSON(w http.ResponseWriter, status int, v any) error {
 
 	return json.NewEncoder(w).Encode(v)
 }
+
+func withRedisCache(handlerFunc http.HandlerFunc, r Cache) http.HandlerFunc {
+
+}
+
 func withJWTAuth(handlerFunc http.HandlerFunc, s Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("calling JWT middleware")
