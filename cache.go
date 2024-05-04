@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 type Cache interface {
-	Get(context.Context, string) ([]byte, error)
-	Set(context.Context, string, any, time.Duration) error
+	Get(context.Context, int) ([]byte, error)
+	Set(context.Context, int, any, time.Duration) error
 }
 
 type RedisCache struct {
@@ -28,8 +29,9 @@ func NewRedisCache() (*RedisCache) {
 	}
 }
 
-func (r *RedisCache) Get(ctx context.Context, id string) ([]byte, error) {
-	val, err := r.cache.Get(ctx, id).Bytes()
+func (r *RedisCache) Get(ctx context.Context, id int) ([]byte, error) {
+	idStr := strconv.Itoa(id)
+	val, err := r.cache.Get(ctx, idStr).Bytes()
 	if err != nil {
 		return nil, err
 	}
@@ -37,8 +39,9 @@ func (r *RedisCache) Get(ctx context.Context, id string) ([]byte, error) {
 	return val, nil
 }
 
-func (r *RedisCache) Set(ctx context.Context, id string, v any, duration time.Duration) error {
-	if err := r.cache.Set(ctx, id, v, duration).Err(); err != nil {
+func (r *RedisCache) Set(ctx context.Context, id int, v any, duration time.Duration) error {
+	idStr := strconv.Itoa(id)
+	if err := r.cache.Set(ctx, idStr, v, duration).Err(); err != nil {
 		return err
 	}
 

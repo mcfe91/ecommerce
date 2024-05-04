@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
@@ -31,7 +32,7 @@ func (s *APIServer) Run() {
 
 	router.HandleFunc("/login", makeHTTPHandleFunc(s.handleLogin))
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
-	router.HandleFunc("/account/{id}", withJWTAuth(makeHTTPHandleFunc(s.handleGetAccountByID), s.store))
+	router.HandleFunc("/account/{id}", withJWTAuth(withCache(makeHTTPHandleFunc(s.handleGetAccountByID), s.cache), s.store))
 	router.HandleFunc("/transfer", makeHTTPHandleFunc(s.handleTransfer))
 
 	log.Println("JSON API server running on port: ", s.listenAddr)
@@ -100,13 +101,22 @@ func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request)
 		if err != nil {
 			return err
 		}
+
+		json, err := json.Marshal(account)
+		if err != nil {
+			log.Printf("error marshaling account: %s\n", err.Error())
+		}
+
+		if err := s.cache.Set(r.Context(), id, json, time.Second * 10); err != nil {
+			log.Printf("error setting cache with account id: %d. Error: %s\n", id, err.Error())
+		}
 		
 		return WriteJSON(w, http.StatusOK, account)
 	}
 
 	if r.Method == "DELETE" {
 		return s.handleDeleteAccount(w, r)
-	}
+	} // TODO: move to its own handler
 
 	return fmt.Errorf("method not allowed %s", r.Method)
 }
@@ -159,13 +169,34 @@ func WriteJSON(w http.ResponseWriter, status int, v any) error {
 	return json.NewEncoder(w).Encode(v)
 }
 
-func withRedisCache(handlerFunc http.HandlerFunc, r Cache) http.HandlerFunc {
+func withCache(handlerFunc http.HandlerFunc, c Cache) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("calling cache middleware")
 
+		userID, err := getID(r)
+		if err != nil {
+			WriteJSON(w, http.StatusBadRequest, ApiError{Error: "bad request"})
+			return
+		}
+
+		bytes, err := c.Get(r.Context(), userID)
+		if err != nil {
+			log.Printf("cache miss for user id: %d\n", userID)
+
+			handlerFunc(w, r)
+			return
+		}
+
+		log.Printf("cache hit for id: %d", userID)
+		account := &Account{}
+		json.Unmarshal(bytes, account)
+		WriteJSON(w, http.StatusOK, account)
+	}
 }
 
 func withJWTAuth(handlerFunc http.HandlerFunc, s Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("calling JWT middleware")
+		log.Println("calling JWT middleware")
 
 		tokenString := r.Header.Get("x-jwt-token")
 		token, err := validateJWT(tokenString)
